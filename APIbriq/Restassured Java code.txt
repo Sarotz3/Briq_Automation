@@ -1,0 +1,79 @@
+import io.restassured.RestAssured;
+import io.restassured.response.Response;
+import io.restassured.specification.RequestSpecification;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+public class SFGovDataFetcher {
+    public static void main(String[] args) {
+        
+        String url = "https://data.sfgov.org/resource/p4e4-a5a7.json";
+
+        RequestSpecification request = RestAssured.given();
+        Response response = request.get(url);
+
+        
+        if (response.getStatusCode() == 200) {
+            String jsonData = response.getBody().asString();
+
+            JsonArray jsonArray = JsonParser.parseString(jsonData).getAsJsonArray();
+
+            processAndExportData(jsonArray);
+        } else {
+            System.err.println("Failed to fetch data. Status code: " + response.getStatusCode());
+        }
+    }
+
+    private static void processAndExportData(JsonArray jsonArray) {
+        try {
+            SimpleDateFormat timestampFormat = new SimpleDateFormat("MM-dd-yyyy");
+            SimpleDateFormat filenameFormat = new SimpleDateFormat("MM-dd-yy-HH-mm-ss");
+            Date currentDate = new Date();
+            String timestamp = timestampFormat.format(currentDate);
+            String filename = "sfgov_" + filenameFormat.format(currentDate);
+
+            String csvFilePath = "/HOME/briq/" + filename + ".csv";
+            FileWriter csvFileWriter = new FileWriter(csvFilePath);
+            CSVPrinter csvPrinter = new CSVPrinter(csvFileWriter, CSVFormat.DEFAULT
+                    .withHeader("name", "description", "timestamp", "is_roof"));
+
+            for (int i = 0; i < jsonArray.size(); i++) {
+                JsonObject jsonObject = jsonArray.get(i).getAsJsonObject();
+
+                boolean isRoof = jsonObject.get("description").getAsString().toLowerCase().contains("roof");
+
+                String formattedTimestamp = timestampFormat.format(new Date(jsonObject.get("timestamp").getAsLong()));
+
+                csvPrinter.printRecord(
+                        jsonObject.get("name").getAsString(),
+                        jsonObject.get("description").getAsString(),
+                        formattedTimestamp,
+                        isRoof
+                );
+            }
+
+            csvPrinter.flush();
+            csvPrinter.close();
+
+            System.out.println("Data processed and exported to CSV: " + csvFilePath);
+
+            String jsonFilePath = "/HOME/briq/" + filename + ".json";
+            FileWriter jsonFileWriter = new FileWriter(jsonFilePath);
+            jsonFileWriter.write(jsonArray.toString());
+            jsonFileWriter.close();
+
+            System.out.println("JSON data exported to file: " + jsonFilePath);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
